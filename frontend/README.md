@@ -1,172 +1,96 @@
 # Neamet - Flutter Mobile Application
 
-A modern Flutter-based mobile application for the Neamet grocery delivery platform. Features Material 3 design, Firebase authentication, and real-time updates.
+Flutter mobile app for the Neamet grocery delivery platform.  
+Connects to the live backend at **https://mini-project-8sdo.onrender.com**.
 
-## 📋 Prerequisites
+## Prerequisites
 
-- Flutter SDK 3.0.0 or higher
-- Dart SDK 3.0.0 or higher  
-- Android SDK (for Android development)
-- Xcode (for iOS development)
-- Firebase project setup
+- Flutter SDK 3.0.0+
+- Dart SDK 3.0.0+
+- Android SDK (Android builds) / Xcode (iOS builds)
 
-## 🚀 Getting Started
-
-### Installation
-
-1. **Install Flutter dependencies:**
-   ```bash
-   flutter pub get
-   ```
-
-2. **Configure Firebase (if needed):**
-   - Place your `google-services.json` in `android/app/`
-   - Place your `GoogleService-Info.plist` in `ios/Runner/`
-
-### Running the App
+## Getting Started
 
 ```bash
-# Run with Flutter development server (hot reload enabled)
+cd frontend
+flutter pub get
+flutter run
+```
+
+The app targets the production Render backend by default (`lib/services/api_client.dart`).  
+Change the base URL there to `http://localhost:8000` to use a local backend.
+
+## Features
+
+- **Home** — browse shops and product catalog, search products
+- **Favourites** — heart button on each product card; list persisted with shared_preferences
+- **Orders** — full order history with status badges; tap any order to track it
+- **Account** — profile, login / signup via custom JWT auth
+
+Delivery person view: available orders with 2-second polling, accept and advance status.
+
+## Running the App
+
+```bash
+# Hot reload (development)
 flutter run
 
-# Run on specific device
+# Specific device
 flutter run -d <device_id>
 
-# Run on Android emulator
-flutter run -d emulator-<number>
-
-# Run on iOS simulator
-flutter run -d iPhone
-
-# Run on web
-flutter run -d chrome
-
-# Build and run release version
+# Release mode
 flutter run --release
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 lib/
-  ├── constants/       # App constants and configuration
-  ├── models/          # Data models
-  ├── screens/         # App screens/pages
-  ├── services/        # API and external services
-  ├── widgets/         # Reusable widgets
-  └── main.dart        # App entry point
+  ├── constants/        # App-wide constants
+  ├── models/           # Dart data models
+  ├── screens/          # UI screens (home, login, order tracking…)
+  ├── services/         # api_client.dart, order_service.dart, favorites_service.dart
+  ├── widgets/          # Reusable widgets (product_card, etc.)
+  └── main.dart
 ```
 
-## 🔧 Build Commands
+## Build
 
 ```bash
-# Build for different platforms
-flutter build web        # Web
-flutter build apk        # Android APK
-flutter build appbundle  # Android App Bundle
-flutter build ios        # iOS
-
-# Clean and rebuild
-flutter clean
-flutter pub get
-flutter run
-```
-
-## 📦 Dependencies
-
-Key packages used in this project:
-- **google_fonts** - Custom fonts
-- **firebase_core** - Firebase initialization
-- **firebase_auth** - Authentication
-- **cloud_firestore** - Database
-- **http** - HTTP requests
-- **shared_preferences** - Local storage
-
-See `pubspec.yaml` for complete list.
-
-## 🔐 Environment Configuration
-
-Configuration values are typically stored in constants files. Ensure API endpoints and Firebase configurations are properly set.
-
-## 🧪 Testing
-
-```bash
-# Run unit tests
-flutter test
-
-# Run all tests
-flutter test test/
-```
-
-## 🌐 API Integration
-
-The app communicates with the FastAPI backend located in `../backend/`. Ensure the backend is running before testing API features.
-
-Base API URL: Configure in your services based on environment (dev/prod).
-
-## 🚢 Deployment
-
-### Android
-```bash
-# Generate signing key
-keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
-
-# Build release APK
+# Release APK (~57 MB)
 flutter build apk --release
-```
+# Output: build/app/outputs/flutter-apk/app-release.apk
 
-### iOS
-```bash
-# Build iOS app
+# Debug APK
+flutter build apk --debug
+
+# iOS
 flutter build ios --release
 
-# For App Store submission, use Xcode
-open ios/Runner.xcworkspace
-```
-
-### Web
-```bash
-# Build web for production
+# Web
 flutter build web --release
-
-# Output will be in build/web/
 ```
 
-## 📚 Resources
+## Key Dependencies
 
-- [Flutter Documentation](https://docs.flutter.dev/)
-- [Flutter Cookbook](https://docs.flutter.dev/cookbook)
-- [Material 3 Guidelines](https://m3.material.io/)
-- [Firebase Documentation](https://firebase.google.com/docs)
+| Package | Purpose |
+|---|---|
+| http | REST API calls |
+| shared_preferences | Persisted favourites |
+| google_fonts | Custom typography |
+| firebase_core | Firebase SDK init |
 
-## 🐛 Troubleshooting
+See `pubspec.yaml` for the full list.
 
-### Flutter Doctor
-```bash
-flutter doctor
-```
-
-### Clear Cache
-```bash
-flutter clean
-rm -rf pubspec.lock
-flutter pub get
-```
-
-### Dependency Issues
-```bash
-flutter pub upgrade
-```
-
-## 📝 Contributing
-
-Follow the Flutter style guide and ensure code is properly formatted:
+## Troubleshooting
 
 ```bash
-flutter format lib/
-flutter analyze
+flutter doctor          # check environment
+flutter clean           # clear build cache
+flutter pub get         # reinstall packages
+flutter pub upgrade     # upgrade packages
 ```
 
-## 📄 License
+## License
 
 Part of the Neamet grocery delivery application.
