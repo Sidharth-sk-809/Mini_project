@@ -1,0 +1,1 @@
+ /Users/sidharth_sk/Desktop/mini/prj/Mini_project/frontend/.dart_tool/flutter_build/41a5069b75f84525ad1774a718f19daa/dart_build_result.json:  /Users/sidharth_sk/Desktop/mini/prj/Mini_project/frontend/.dart_tool/package_config.json /Users/sidharth_sk/Desktop/mini/prj/Mini_project/frontend/pubspec.yaml /Users/sidharth_sk/develop/flutter/bin/cache/dart-sdk/version

@@ -1,0 +1,31 @@
+# Build and compilation artifacts
+frontend/build/
+backend/myenv/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/.pytest_cache/
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+
+# Dependencies
+node_modules/
+.pub-cache/
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+.pytest_cache/

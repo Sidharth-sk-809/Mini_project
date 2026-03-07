@@ -21,8 +21,8 @@
     },
     "linking_enabled": true
   },
-  "out_dir_shared": "/Users/sidharth_sk/Desktop/mini/prj/Mini_project/.dart_tool/hooks_runner/shared/objective_c/build/",
-  "out_file": "/Users/sidharth_sk/Desktop/mini/prj/Mini_project/.dart_tool/hooks_runner/objective_c/8a0ce5343e4b6aaa8d389b608139242a/output.json",
+  "out_dir_shared": "/Users/sidharth_sk/Desktop/mini/prj/Mini_project/frontend/.dart_tool/hooks_runner/shared/objective_c/build/",
+  "out_file": "/Users/sidharth_sk/Desktop/mini/prj/Mini_project/frontend/.dart_tool/hooks_runner/objective_c/8a0ce5343e4b6aaa8d389b608139242a/output.json",
   "package_name": "objective_c",
   "package_root": "/Users/sidharth_sk/.pub-cache/hosted/pub.dev/objective_c-9.3.0/",
   "user_defines": {}
