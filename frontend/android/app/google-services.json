@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "882254702777",
+    "project_id": "authenticate-5f23c",
+    "storage_bucket": "authenticate-5f23c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:882254702777:android:331b0898620d094e591368",
+        "android_client_info": {
+          "package_name": "com.example.Material_map"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqVEurEX2IgIu6hhKAO2OenFiw-ga5OOw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
