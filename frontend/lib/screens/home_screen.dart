@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/colors.dart';
 import '../constants/styles.dart';
+import '../models/order_models.dart';
 import '../models/product_model.dart';
 import '../services/cart_service.dart';
 import '../services/auth_service.dart';
 import '../services/catalog_api_service.dart';
+import '../services/favorites_service.dart';
 import '../services/location_service.dart';
+import '../services/order_service.dart';
 import '../services/session_service.dart';
 import '../widgets/category_item.dart';
 import '../widgets/product_card.dart';
@@ -36,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
       selectedRangeKm = 2;
     }
     LocationService.setLocation(SessionService.location);
+    FavoritesService.init();
+    OrderService.seedDemoOrdersIfEmpty();
     _syncCatalog();
   }
 
@@ -64,20 +69,24 @@ class _HomeScreenState extends State<HomeScreen> {
             child: SingleChildScrollView(
               child: selectedBottomTab == 3
                   ? _buildAccountTab()
-                  : Column(
-                      children: [
-                        _buildSearchBar(),
-                        const SizedBox(height: 20),
-                        _buildCategories(),
-                        const SizedBox(height: 24),
-                        if (searchQuery.trim().isEmpty) _buildSpecialOfferCard(),
-                        const SizedBox(height: 24),
-                        searchQuery.trim().isEmpty
-                            ? _buildPopularItems(context)
-                            : _buildSearchResults(context),
-                        const SizedBox(height: 80),
-                      ],
-                    ),
+                  : selectedBottomTab == 1
+                      ? _buildFavoritesTab()
+                      : selectedBottomTab == 2
+                          ? _buildOrdersTab()
+                          : Column(
+                              children: [
+                                _buildSearchBar(),
+                                const SizedBox(height: 20),
+                                _buildCategories(),
+                                const SizedBox(height: 24),
+                                if (searchQuery.trim().isEmpty) _buildSpecialOfferCard(),
+                                const SizedBox(height: 24),
+                                searchQuery.trim().isEmpty
+                                    ? _buildPopularItems(context)
+                                    : _buildSearchResults(context),
+                                const SizedBox(height: 80),
+                              ],
+                            ),
             ),
           ),
         ],
@@ -506,6 +515,244 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildFavoritesTab() {
+    return ValueListenableBuilder<Set<String>>(
+      valueListenable: FavoritesService.favoriteIds,
+      builder: (context, ids, _) {
+        final favorites = FavoritesService.favoritedProducts();
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('My Favourites', style: AppStyles.heading2),
+                  if (favorites.isNotEmpty)
+                    Text(
+                      '${favorites.length} items',
+                      style: AppStyles.bodySmall.copyWith(color: AppColors.accentGreen),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (favorites.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 60),
+                    child: Column(
+                      children: [
+                        Icon(Icons.favorite_border, size: 64, color: AppColors.lightGray),
+                        const SizedBox(height: 16),
+                        Text('No favourites yet', style: AppStyles.heading3),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Tap the ♡ on any product to save it here',
+                          style: AppStyles.bodyMedium,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 0.50,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  itemCount: favorites.length,
+                  itemBuilder: (_, index) {
+                    final product = favorites[index];
+                    return ProductCard(
+                      product: product,
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/product_details', arguments: product),
+                      onAddPressed: () {
+                        CartService.addProduct(product);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('${product.name} added to cart')),
+                        );
+                      },
+                    );
+                  },
+                ),
+              const SizedBox(height: 80),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOrdersTab() {
+    return ValueListenableBuilder<List<CustomerOrder>>(
+      valueListenable: OrderService.orders,
+      builder: (context, orders, _) {
+        final customerOrders = orders
+            .where((o) => o.shopOrders.isNotEmpty)
+            .toList();
+
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('My Orders', style: AppStyles.heading2),
+                  if (customerOrders.isNotEmpty)
+                    Text(
+                      '${customerOrders.length} orders',
+                      style: AppStyles.bodySmall.copyWith(color: AppColors.accentGreen),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (customerOrders.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 60),
+                    child: Column(
+                      children: [
+                        Icon(Icons.receipt_long_outlined, size: 64, color: AppColors.lightGray),
+                        const SizedBox(height: 16),
+                        Text('No orders yet', style: AppStyles.heading3),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Your order history will appear here',
+                          style: AppStyles.bodyMedium,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                ...customerOrders.map((order) => _buildOrderCard(context, order)),
+              const SizedBox(height: 80),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOrderCard(BuildContext context, CustomerOrder order) {
+    final firstShopOrder = order.shopOrders.first;
+    final statusLabel = _orderStatusLabel(firstShopOrder.status);
+    final statusColor = _orderStatusColor(firstShopOrder.status);
+    final totalItems = order.shopOrders.fold<int>(
+      0,
+      (sum, so) => sum + so.items.fold<int>(0, (s, i) => s + i.quantity),
+    );
+
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, '/order_tracking', arguments: order.id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: AppStyles.cardDecoration,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Order #${order.id.replaceFirst('ORD-', '')}',
+                    style: AppStyles.bodyLarge.copyWith(fontWeight: FontWeight.w700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: AppStyles.bodySmall.copyWith(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${order.shopOrders.length} shop${order.shopOrders.length > 1 ? 's' : ''} • $totalItems item${totalItems > 1 ? 's' : ''}',
+              style: AppStyles.bodySmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              order.deliveryAddress,
+              style: AppStyles.bodySmall.copyWith(color: AppColors.textDark),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _formatDate(order.createdAt),
+                  style: AppStyles.bodySmall,
+                ),
+                Text(
+                  '₹${order.grandTotal.toStringAsFixed(0)}',
+                  style: AppStyles.bodyLarge.copyWith(
+                    color: AppColors.accentGreen,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _orderStatusLabel(OrderStatus status) {
+    return switch (status) {
+      OrderStatus.placed => 'Placed',
+      OrderStatus.confirmed => 'Confirmed',
+      OrderStatus.packed => 'Packed',
+      OrderStatus.outForDelivery => 'Out for Delivery',
+      OrderStatus.delivered => 'Delivered',
+      OrderStatus.cancelled => 'Cancelled',
+    };
+  }
+
+  Color _orderStatusColor(OrderStatus status) {
+    return switch (status) {
+      OrderStatus.placed => Colors.orange,
+      OrderStatus.confirmed => Colors.blue,
+      OrderStatus.packed => Colors.purple,
+      OrderStatus.outForDelivery => AppColors.accentGreen,
+      OrderStatus.delivered => AppColors.accentGreen,
+      OrderStatus.cancelled => Colors.red,
+    };
+  }
+
+  String _formatDate(DateTime dt) {
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
 
   Widget _buildAccountTab() {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../constants/styles.dart';
 import '../models/product_model.dart';
+import '../services/favorites_service.dart';
 
 class ProductCard extends StatelessWidget {
   final Product product;
@@ -44,6 +45,38 @@ class ProductCard extends StatelessWidget {
                         color: Color(0xFFB0B0B0),
                       ),
                     ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: ValueListenableBuilder<Set<String>>(
+                    valueListenable: FavoritesService.favoriteIds,
+                    builder: (_, ids, __) {
+                      final isFav = ids.contains(product.id);
+                      return GestureDetector(
+                        onTap: () => FavoritesService.toggle(product.id),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            isFav ? Icons.favorite : Icons.favorite_border,
+                            color: isFav ? Colors.red : const Color(0xFFB0B0B0),
+                            size: 18,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 Positioned(
