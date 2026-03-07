@@ -8,12 +8,23 @@ from .auth import (
     create_access_token,
     get_current_user,
     hash_password,
+    require_admin_user,
     require_delivery_user,
     verify_password,
 )
 from .database import Base, SessionLocal, engine, get_db
 from .models import CustomerOrder, Product, Shop, ShopOrder, ShopOrderItem, User
 from .schemas import (
+    AdminOrderResponse,
+    AdminProductCreate,
+    AdminProductResponse,
+    AdminProductUpdate,
+    AdminShopCreate,
+    AdminShopResponse,
+    AdminShopUpdate,
+    AdminStatsResponse,
+    AdminStockUpdate,
+    AdminUserResponse,
     AuthLoginRequest,
     AuthResponse,
     AuthSignupRequest,
@@ -509,3 +520,330 @@ def advance_order_status(
     db.commit()
     db.refresh(so)
     return _shop_order_to_dto(db, so)
+
+
+# ════════════════════════════════════════════════════════════════
+#  ADMIN ENDPOINTS
+# ════════════════════════════════════════════════════════════════
+
+def _product_to_admin_dto(product: Product, db: Session) -> AdminProductResponse:
+    shop = db.query(Shop).filter(Shop.id == product.shop_id).first()
+    return AdminProductResponse(
+        id=product.id,
+        code=product.code,
+        name=product.name,
+        subtitle=product.subtitle,
+        image=product.image,
+        price=product.price,
+        rating=product.rating,
+        review_count=product.review_count,
+        description=product.description,
+        stock=product.stock,
+        shop_id=product.shop_id,
+        shop_code=shop.code if shop else "",
+        shop_name=shop.name if shop else "",
+    )
+
+
+def _shop_to_admin_dto(shop: Shop, db: Session) -> AdminShopResponse:
+    product_count = db.query(Product).filter(Product.shop_id == shop.id).count()
+    return AdminShopResponse(
+        id=shop.id,
+        code=shop.code,
+        name=shop.name,
+        shop_type=shop.shop_type,
+        distance_km=shop.distance_km,
+        delivery_available=shop.delivery_available,
+        product_count=product_count,
+    )
+
+
+# ── Stats ──────────────────────────────────────────────────────────
+
+@app.get("/api/admin/stats", response_model=AdminStatsResponse)
+def admin_stats(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    total_products = db.query(Product).count()
+    total_shops = db.query(Shop).count()
+    total_users = db.query(User).count()
+    total_orders = db.query(CustomerOrder).count()
+    pending_orders = db.query(CustomerOrder).filter(
+        CustomerOrder.status.in_(["placed", "confirmed", "packed"])
+    ).count()
+    delivered_orders = db.query(CustomerOrder).filter(
+        CustomerOrder.status == "delivered"
+    ).count()
+
+    delivered_shop_orders = db.query(ShopOrder).filter(ShopOrder.status == "delivered").all()
+    total_revenue = 0.0
+    for so in delivered_shop_orders:
+        for item in so.items:
+            total_revenue += item.price * item.quantity
+
+    return AdminStatsResponse(
+        total_products=total_products,
+        total_shops=total_shops,
+        total_users=total_users,
+        total_orders=total_orders,
+        total_revenue=round(total_revenue, 2),
+        pending_orders=pending_orders,
+        delivered_orders=delivered_orders,
+    )
+
+
+# ── Products ───────────────────────────────────────────────────────
+
+@app.get("/api/admin/products", response_model=list[AdminProductResponse])
+def admin_list_products(
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    query = db.query(Product)
+    if shop_code:
+        shop = db.query(Shop).filter(Shop.code == shop_code).first()
+        if not shop:
+            raise HTTPException(status_code=404, detail="Shop not found")
+        query = query.filter(Product.shop_id == shop.id)
+    products = query.order_by(Product.name).all()
+    return [_product_to_admin_dto(p, db) for p in products]
+
+
+@app.post("/api/admin/products", response_model=AdminProductResponse, status_code=201)
+def admin_create_product(
+    payload: AdminProductCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    shop = db.query(Shop).filter(Shop.code == payload.shop_code).first()
+    if not shop:
+        raise HTTPException(status_code=404, detail="Shop not found")
+
+    existing = db.query(Product).filter(Product.code == payload.code).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Product code already exists")
+
+    product = Product(
+        code=payload.code,
+        name=payload.name,
+        subtitle=payload.subtitle,
+        image=payload.image,
+        price=payload.price,
+        rating=payload.rating,
+        review_count=payload.review_count,
+        description=payload.description,
+        stock=payload.stock,
+        shop_id=shop.id,
+    )
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return _product_to_admin_dto(product, db)
+
+
+@app.put("/api/admin/products/{product_code}", response_model=AdminProductResponse)
+def admin_update_product(
+    product_code: str,
+    payload: AdminProductUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    product = db.query(Product).filter(Product.code == product_code).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if payload.name is not None:
+        product.name = payload.name
+    if payload.subtitle is not None:
+        product.subtitle = payload.subtitle
+    if payload.image is not None:
+        product.image = payload.image
+    if payload.price is not None:
+        product.price = payload.price
+    if payload.rating is not None:
+        product.rating = payload.rating
+    if payload.review_count is not None:
+        product.review_count = payload.review_count
+    if payload.description is not None:
+        product.description = payload.description
+    if payload.stock is not None:
+        product.stock = payload.stock
+
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return _product_to_admin_dto(product, db)
+
+
+@app.patch("/api/admin/products/{product_code}/stock", response_model=AdminProductResponse)
+def admin_update_stock(
+    product_code: str,
+    payload: AdminStockUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    product = db.query(Product).filter(Product.code == product_code).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product.stock = payload.stock
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return _product_to_admin_dto(product, db)
+
+
+@app.delete("/api/admin/products/{product_code}", status_code=204)
+def admin_delete_product(
+    product_code: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    product = db.query(Product).filter(Product.code == product_code).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    db.delete(product)
+    db.commit()
+
+
+# ── Shops ──────────────────────────────────────────────────────────
+
+@app.get("/api/admin/shops", response_model=list[AdminShopResponse])
+def admin_list_shops(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    shops = db.query(Shop).order_by(Shop.name).all()
+    return [_shop_to_admin_dto(s, db) for s in shops]
+
+
+@app.post("/api/admin/shops", response_model=AdminShopResponse, status_code=201)
+def admin_create_shop(
+    payload: AdminShopCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    existing = db.query(Shop).filter(Shop.code == payload.code).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Shop code already exists")
+
+    shop = Shop(
+        code=payload.code,
+        name=payload.name,
+        shop_type=payload.shop_type,
+        distance_km=payload.distance_km,
+        delivery_available=payload.delivery_available,
+    )
+    db.add(shop)
+    db.commit()
+    db.refresh(shop)
+    return _shop_to_admin_dto(shop, db)
+
+
+@app.put("/api/admin/shops/{shop_code}", response_model=AdminShopResponse)
+def admin_update_shop(
+    shop_code: str,
+    payload: AdminShopUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    shop = db.query(Shop).filter(Shop.code == shop_code).first()
+    if not shop:
+        raise HTTPException(status_code=404, detail="Shop not found")
+
+    if payload.name is not None:
+        shop.name = payload.name
+    if payload.shop_type is not None:
+        shop.shop_type = payload.shop_type
+    if payload.distance_km is not None:
+        shop.distance_km = payload.distance_km
+    if payload.delivery_available is not None:
+        shop.delivery_available = payload.delivery_available
+
+    db.add(shop)
+    db.commit()
+    db.refresh(shop)
+    return _shop_to_admin_dto(shop, db)
+
+
+@app.delete("/api/admin/shops/{shop_code}", status_code=204)
+def admin_delete_shop(
+    shop_code: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    shop = db.query(Shop).filter(Shop.code == shop_code).first()
+    if not shop:
+        raise HTTPException(status_code=404, detail="Shop not found")
+    product_count = db.query(Product).filter(Product.shop_id == shop.id).count()
+    if product_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete shop with {product_count} products. Delete products first.",
+        )
+    db.delete(shop)
+    db.commit()
+
+
+# ── Users ──────────────────────────────────────────────────────────
+
+@app.get("/api/admin/users", response_model=list[AdminUserResponse])
+def admin_list_users(
+    role: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    query = db.query(User)
+    if role:
+        query = query.filter(User.role == role)
+    users = query.order_by(User.created_at.desc()).all()
+    return [
+        AdminUserResponse(
+            id=u.id,
+            name=u.name,
+            email=u.email,
+            role=u.role,
+            location=u.location,
+            created_at=u.created_at,
+        )
+        for u in users
+    ]
+
+
+# ── Orders ──────────────────────────────────────────────────────────
+
+@app.get("/api/admin/orders", response_model=list[AdminOrderResponse])
+def admin_list_orders(
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    query = db.query(CustomerOrder)
+    if status:
+        query = query.filter(CustomerOrder.status == status)
+    orders = query.order_by(CustomerOrder.created_at.desc()).all()
+
+    result = []
+    for order in orders:
+        total_items = 0
+        grand_total = 0.0
+        for so in order.shop_orders:
+            for item in so.items:
+                total_items += item.quantity
+                grand_total += item.price * item.quantity
+            grand_total += so.delivery_fee
+        result.append(
+            AdminOrderResponse(
+                id=order.id,
+                order_code=order.order_code,
+                customer_user_id=order.customer_user_id,
+                delivery_address=order.delivery_address,
+                status=order.status,
+                created_at=order.created_at,
+                total_items=total_items,
+                grand_total=round(grand_total, 2),
+            )
+        )
+    return result

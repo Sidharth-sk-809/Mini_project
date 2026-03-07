@@ -198,6 +198,15 @@ def seed_data(db: Session):
                 location="Edappally, Kochi",
             )
         )
+        db.add(
+            User(
+                name="Admin",
+                email="admin@neamet.app",
+                password_hash=hash_password("admin123"),
+                role="admin",
+                location="Edappally, Kochi",
+            )
+        )
 
     db.commit()
 
