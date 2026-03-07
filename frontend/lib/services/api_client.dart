@@ -18,15 +18,8 @@ class ApiClient {
       return _definedBaseUrl.trim();
     }
 
-    if (kIsWeb) {
-      return 'http://localhost:8000';
-    }
-
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000';
-    }
-
-    return 'http://localhost:8000';
+    // Use production URL for all platforms
+    return 'https://mini-project-8sdo.onrender.com';
   }
 
   static Uri _uri(String path, [Map<String, dynamic>? query]) {
