@@ -5,7 +5,7 @@ create table if not exists users (
   name varchar(120) not null,
   email varchar(255) not null unique,
   password_hash varchar(255) not null,
-  role varchar(40) not null default 'customer' check (role in ('customer','delivery_person')),
+  role varchar(40) not null default 'customer' check (role in ('customer','delivery_person','admin')),
   location varchar(255) not null default 'Edappally, Kochi',
   created_at timestamptz not null default now()
 );
