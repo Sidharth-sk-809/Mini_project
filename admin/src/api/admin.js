@@ -34,4 +34,13 @@ export const getUsers = (role) =>
 
 // ── Orders ────────────────────────────────────────────────────────────────────
 export const getOrders = (status) =>
-  client.get('/api/admin/orders', { params: status ? { status } : {} });
+  client.get('/api/admin/orders', {
+    params: {
+      ...(status ? { status } : {}),
+      _t: Date.now(),
+    },
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });

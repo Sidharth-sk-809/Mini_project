@@ -24,10 +24,10 @@ export default function Orders() {
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const loadOrders = useCallback(async () => {
-    const { data } = await getOrders(filter || undefined);
+    const { data } = await getOrders();
     setOrders(data);
     setLastUpdated(new Date());
-  }, [filter]);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -48,7 +48,8 @@ export default function Orders() {
 
   const filtered = orders.filter((order) => {
     const q = search.toLowerCase();
-    return (
+    const matchesStatus = !filter || order.status === filter;
+    return matchesStatus && (
       order.order_code.toLowerCase().includes(q) ||
       String(order.customer_user_id).includes(q)
     );
