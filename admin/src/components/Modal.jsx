@@ -1,22 +1,21 @@
-import { useEffect } from 'react'
+import { useEffect } from 'react';
 
-export default function Modal({ title, onClose, children, footer }) {
+export default function Modal({ title, onClose, children }) {
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+    const handleKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal">
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">{title}</div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <h3>{title}</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
         </div>
-        {children}
-        {footer && <div className="modal-footer">{footer}</div>}
+        <div className="modal-body">{children}</div>
       </div>
     </div>
-  )
+  );
 }

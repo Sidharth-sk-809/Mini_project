@@ -1,121 +1,149 @@
-import { useEffect, useState } from 'react'
-import { getOrders } from '../api/client'
+import { useEffect, useState, useCallback } from 'react';
+import { getOrders } from '../api/admin';
+import { useShop } from '../context/ShopContext';
 
-const STATUS_BADGE = {
-  placed:     'badge-info',
-  confirmed:  'badge-warning',
-  packed:     'badge-warning',
-  picked_up:  'badge-warning',
-  delivered:  'badge-success',
-  cancelled:  'badge-danger',
-}
+const STATUS_META = {
+  placed: { bg: '#dbeafe', text: '#1d4ed8', label: 'Placed' },
+  confirmed: { bg: '#cffafe', text: '#0e7490', label: 'Confirmed' },
+  packed: { bg: '#ffedd5', text: '#c2410c', label: 'Packed' },
+  picked_up: { bg: '#ede9fe', text: '#6d28d9', label: 'Picked Up' },
+  delivered: { bg: '#dcfce7', text: '#15803d', label: 'Delivered' },
+  cancelled: { bg: '#fee2e2', text: '#b91c1c', label: 'Cancelled' },
+};
 
-const STATUS_ICON = {
-  placed: '🆕', confirmed: '✅', packed: '📦',
-  picked_up: '🛵', delivered: '🎉', cancelled: '❌',
-}
+const STATUSES = ['', 'placed', 'confirmed', 'packed', 'picked_up', 'delivered', 'cancelled'];
 
 export default function Orders() {
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [statusFilter, setStatusFilter] = useState('')
-  const [search, setSearch] = useState('')
+  const { selectedShopCode } = useShop();
 
-  const load = (status = statusFilter) => {
-    setLoading(true)
-    getOrders(status || undefined)
-      .then(({ data }) => { setOrders(data); setLoading(false) })
-      .catch(() => { setError('Failed to load orders'); setLoading(false) })
-  }
+  const [orders, setOrders] = useState([]);
+  const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [live, setLive] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  useEffect(() => { load() }, [])
+  const loadOrders = useCallback(async () => {
+    const { data } = await getOrders(filter || undefined);
+    setOrders(data);
+    setLastUpdated(new Date());
+  }, [filter]);
 
-  const filtered = orders.filter(
-    (o) =>
-      o.order_code?.toLowerCase().includes(search.toLowerCase()) ||
-      String(o.customer_user_id).includes(search) ||
-      o.delivery_address?.toLowerCase().includes(search.toLowerCase())
-  )
+  useEffect(() => {
+    setLoading(true);
+    loadOrders()
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [loadOrders]);
 
-  const fmt = (dt) => {
-    if (!dt) return '—'
-    return new Date(dt).toLocaleString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    })
-  }
+  useEffect(() => {
+    if (!live) return undefined;
+
+    const timer = setInterval(() => {
+      loadOrders().catch(console.error);
+    }, 6000);
+
+    return () => clearInterval(timer);
+  }, [live, loadOrders]);
+
+  const filtered = orders.filter((order) => {
+    const q = search.toLowerCase();
+    return (
+      order.order_code.toLowerCase().includes(q) ||
+      String(order.customer_user_id).includes(q)
+    );
+  });
 
   return (
-    <div>
-      <div className="table-wrapper">
-        <div className="table-header">
-          <div className="table-title">Orders ({filtered.length})</div>
-          <div className="table-actions">
-            <div className="search-input-wrap">
-              <span className="search-icon">🔍</span>
-              <input className="search-input" placeholder="Search orders…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
-            <select
-              className="form-input"
-              style={{ width: 170, padding: '7px 12px' }}
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); load(e.target.value) }}
-            >
-              <option value="">All Statuses</option>
-              <option value="placed">Placed</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="packed">Packed</option>
-              <option value="picked_up">Picked Up</option>
-              <option value="delivered">Delivered</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Realtime Customer Orders</h2>
+          <p className="page-sub">
+            Auto-refresh every 6 seconds for live intake. {selectedShopCode ? `Workspace: ${selectedShopCode}.` : ''}
+          </p>
         </div>
+        <div className="live-actions">
+          <span className="count-badge">{filtered.length} orders</span>
+          <button className="btn-outline" onClick={() => setLive((prev) => !prev)}>{live ? 'Pause Live' : 'Resume Live'}</button>
+          <button className="btn-primary" onClick={() => loadOrders().catch(console.error)}>Refresh</button>
+        </div>
+      </div>
 
+      <p className="live-indicator">Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString('en-IN') : '-'}</p>
+
+      <div className="filter-bar">
+        <input
+          className="search-input"
+          placeholder="Search by order code or customer ID"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="status-tabs">
+          {STATUSES.map((status) => (
+            <button
+              key={status}
+              className={`role-tab ${filter === status ? 'active' : ''}`}
+              style={
+                filter === status && status
+                  ? {
+                      background: STATUS_META[status].bg,
+                      color: STATUS_META[status].text,
+                      borderColor: STATUS_META[status].text,
+                    }
+                  : {}
+              }
+              onClick={() => setFilter(status)}
+            >
+              {status === '' ? 'All' : STATUS_META[status].label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="table-card">
         {loading ? (
-          <div className="page-loader"><div className="spinner" style={{ width: 32, height: 32, borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} /></div>
-        ) : error ? (
-          <div className="alert alert-danger" style={{ margin: 20 }}>{error}</div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">🧾</div><p>No orders found</p></div>
+          <div className="table-loading">Loading orders...</div>
         ) : (
-          <table>
+          <table className="data-table">
             <thead>
               <tr>
                 <th>Order Code</th>
-                <th>Customer ID</th>
-                <th>Address</th>
+                <th>Customer</th>
                 <th>Items</th>
                 <th>Total</th>
                 <th>Status</th>
-                <th>Date</th>
+                <th>Placed At</th>
+                <th>Address</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((o) => (
-                <tr key={o.id}>
-                  <td><span className="td-code">{o.order_code}</span></td>
-                  <td><span className="badge badge-neutral">#{o.customer_user_id}</span></td>
-                  <td style={{ color: 'var(--text2)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {o.delivery_address || '—'}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>{o.total_items}</td>
-                  <td style={{ fontWeight: 700 }}>
-                    ₹{Number(o.grand_total).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                  </td>
-                  <td>
-                    <span className={`badge ${STATUS_BADGE[o.status] || 'badge-neutral'}`}>
-                      {STATUS_ICON[o.status]} {o.status?.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td style={{ color: 'var(--text2)', fontSize: 12, whiteSpace: 'nowrap' }}>{fmt(o.created_at)}</td>
-                </tr>
-              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={7} className="empty-msg">No orders found.</td></tr>
+              )}
+              {filtered.map((order) => {
+                const meta = STATUS_META[order.status] ?? { bg: '#f3f4f6', text: '#4b5563', label: order.status };
+
+                return (
+                  <tr key={order.id}>
+                    <td className="font-mono">{order.order_code}</td>
+                    <td>#{order.customer_user_id}</td>
+                    <td>{order.total_items}</td>
+                    <td>Rs {order.grand_total?.toFixed(2)}</td>
+                    <td>
+                      <span className="badge" style={{ background: meta.bg, color: meta.text }}>
+                        {meta.label}
+                      </span>
+                    </td>
+                    <td>{new Date(order.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                    <td className="address-cell">{order.delivery_address}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
     </div>
-  )
+  );
 }

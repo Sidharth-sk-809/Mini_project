@@ -1,78 +1,74 @@
-import { useEffect, useState } from 'react'
-import { getUsers } from '../api/client'
+import { useEffect, useState } from 'react';
+import { getUsers } from '../api/admin';
 
-const ROLE_BADGE = {
-  admin:           'badge-danger',
-  customer:        'badge-info',
-  delivery_person: 'badge-warning',
-}
-
-const ROLE_ICON = {
-  admin: '🛡️', customer: '👤', delivery_person: '🚴',
-}
+const ROLE_COLORS = {
+  admin: { bg: '#fef3c7', text: '#d97706' },
+  customer: { bg: '#dbeafe', text: '#2563eb' },
+  delivery_person: { bg: '#d1fae5', text: '#059669' },
+};
 
 export default function Users() {
-  const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [roleFilter, setRoleFilter] = useState('')
-  const [search, setSearch] = useState('')
+  const [users, setUsers] = useState([]);
+  const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const load = (role = roleFilter) => {
-    setLoading(true)
-    getUsers(role || undefined)
-      .then(({ data }) => { setUsers(data); setLoading(false) })
-      .catch(() => { setError('Failed to load users'); setLoading(false) })
-  }
-
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    setLoading(true);
+    getUsers(filter || undefined)
+      .then(({ data }) => setUsers(data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [filter]);
 
   const filtered = users.filter(
     (u) =>
       u.name.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const fmt = (dt) => {
-    if (!dt) return '—'
-    return new Date(dt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-  }
+  );
 
   return (
-    <div>
-      <div className="table-wrapper">
-        <div className="table-header">
-          <div className="table-title">Users ({filtered.length})</div>
-          <div className="table-actions">
-            <div className="search-input-wrap">
-              <span className="search-icon">🔍</span>
-              <input className="search-input" placeholder="Search users…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
-            <select
-              className="form-input"
-              style={{ width: 170, padding: '7px 12px' }}
-              value={roleFilter}
-              onChange={(e) => { setRoleFilter(e.target.value); load(e.target.value) }}
-            >
-              <option value="">All Roles</option>
-              <option value="customer">Customer</option>
-              <option value="delivery_person">Delivery Person</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Users</h2>
+          <p className="page-sub">View all registered users.</p>
         </div>
+        <div className="header-count">
+          <span className="count-badge">{users.length} users</span>
+        </div>
+      </div>
 
+      {/* Filters */}
+      <div className="filter-bar">
+        <input
+          className="search-input"
+          placeholder="Search by name or email…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="role-tabs">
+          {['', 'customer', 'delivery_person', 'admin'].map((r) => (
+            <button
+              key={r}
+              className={`role-tab ${filter === r ? 'active' : ''}`}
+              onClick={() => setFilter(r)}
+            >
+              {r === '' ? 'All' : r === 'delivery_person' ? 'Delivery' : r.charAt(0).toUpperCase() + r.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="table-card">
         {loading ? (
-          <div className="page-loader"><div className="spinner" style={{ width: 32, height: 32, borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} /></div>
-        ) : error ? (
-          <div className="alert alert-danger" style={{ margin: 20 }}>{error}</div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">👥</div><p>No users found</p></div>
+          <div className="table-loading">Loading…</div>
         ) : (
-          <table>
+          <table className="data-table">
             <thead>
               <tr>
-                <th>User</th>
+                <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
                 <th>Location</th>
@@ -80,35 +76,36 @@ export default function Users() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
-                        width: 32, height: 32, borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #4f8ef7, #7c3aed)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 13, fontWeight: 700, flexShrink: 0,
-                      }}>
-                        {u.name?.[0]?.toUpperCase()}
+              {filtered.length === 0 && (
+                <tr><td colSpan={5} className="empty-msg">No users found.</td></tr>
+              )}
+              {filtered.map((u) => {
+                const color = ROLE_COLORS[u.role] ?? { bg: '#f3f4f6', text: '#4b5563' };
+                return (
+                  <tr key={u.id}>
+                    <td>
+                      <div className="user-cell">
+                        <div className="user-initials">
+                          {u.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)}
+                        </div>
+                        <span>{u.name}</span>
                       </div>
-                      <span style={{ fontWeight: 600 }}>{u.name}</span>
-                    </div>
-                  </td>
-                  <td style={{ color: 'var(--text2)' }}>{u.email}</td>
-                  <td>
-                    <span className={`badge ${ROLE_BADGE[u.role] || 'badge-neutral'}`}>
-                      {ROLE_ICON[u.role]} {u.role?.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td style={{ color: 'var(--text2)' }}>{u.location || '—'}</td>
-                  <td style={{ color: 'var(--text2)' }}>{fmt(u.created_at)}</td>
-                </tr>
-              ))}
+                    </td>
+                    <td>{u.email}</td>
+                    <td>
+                      <span className="badge" style={{ background: color.bg, color: color.text }}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td>{u.location || '—'}</td>
+                    <td>{new Date(u.created_at).toLocaleDateString('en-IN')}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
     </div>
-  )
+  );
 }

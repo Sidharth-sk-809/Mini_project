@@ -1,149 +1,156 @@
-import { useEffect, useState } from 'react'
-import { getStats } from '../api/client'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
-} from 'recharts'
+import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { getStats, getOrders, getProducts } from '../api/admin';
+import { useShop } from '../context/ShopContext';
+import StatCard from '../components/StatCard';
 
-function StatCard({ icon, label, value, sub, color }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-icon" style={{ background: color + '22', fontSize: 20 }}>{icon}</div>
-      <div className="stat-value">{value}</div>
-      <div className="stat-label">{label}</div>
-      {sub && <div className="stat-sub">{sub}</div>}
-    </div>
-  )
-}
-
-const CHART_COLORS = ['#4f8ef7', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4']
+const STATUS_COLORS = {
+  placed: '#2563eb',
+  confirmed: '#0891b2',
+  packed: '#ea580c',
+  picked_up: '#7c3aed',
+  delivered: '#16a34a',
+  cancelled: '#dc2626',
+};
 
 export default function Dashboard() {
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const { selectedShopCode } = useShop();
+
+  const [stats, setStats] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState(null);
+
+  const loadDashboard = useCallback(async () => {
+    const [statsRes, ordersRes, productsRes] = await Promise.all([
+      getStats(),
+      getOrders(),
+      getProducts(selectedShopCode || undefined),
+    ]);
+
+    setStats(statsRes.data);
+    setProducts(productsRes.data);
+    setRecentOrders(ordersRes.data.slice(0, 6));
+    setLastSync(new Date());
+  }, [selectedShopCode]);
 
   useEffect(() => {
-    getStats()
-      .then(({ data }) => { setStats(data); setLoading(false) })
-      .catch(() => { setError('Failed to load stats'); setLoading(false) })
-  }, [])
+    loadDashboard()
+      .catch(console.error)
+      .finally(() => setLoading(false));
 
-  if (loading) return <div className="page-loader"><div className="spinner" style={{ width: 36, height: 36, borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} /></div>
-  if (error) return <div className="alert alert-danger">{error}</div>
+    const timer = setInterval(() => {
+      loadDashboard().catch(console.error);
+    }, 10000);
 
-  const barData = [
-    { name: 'Total Orders', value: stats.total_orders },
-    { name: 'Pending',      value: stats.pending_orders },
-    { name: 'Delivered',    value: stats.delivered_orders },
-  ]
+    return () => clearInterval(timer);
+  }, [loadDashboard]);
 
-  const pieData = [
-    { name: 'Products', value: stats.total_products },
-    { name: 'Shops',    value: stats.total_shops },
-    { name: 'Users',    value: stats.total_users },
-  ]
-
-  const orderStatusData = [
-    { name: 'Pending',   value: stats.pending_orders,   fill: '#f59e0b' },
-    { name: 'Delivered', value: stats.delivered_orders, fill: '#22c55e' },
-    { name: 'Other',     value: Math.max(0, stats.total_orders - stats.pending_orders - stats.delivered_orders), fill: '#4f8ef7' },
-  ]
+  const inventoryUnits = products.reduce((sum, p) => sum + (p.stock ?? 0), 0);
+  const lowStockItems = products.filter((p) => (p.stock ?? 0) <= 5).length;
 
   return (
-    <div>
-      {/* Stat Cards */}
-      <div className="stats-grid">
-        <StatCard icon="📦" label="Total Products"  value={stats.total_products}  color="#4f8ef7" />
-        <StatCard icon="🏪" label="Total Shops"     value={stats.total_shops}     color="#a855f7" />
-        <StatCard icon="👥" label="Total Users"     value={stats.total_users}     color="#06b6d4" />
-        <StatCard icon="🧾" label="Total Orders"    value={stats.total_orders}    color="#f59e0b" />
-        <StatCard
-          icon="💰"
-          label="Total Revenue"
-          value={`₹${Number(stats.total_revenue).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-          color="#22c55e"
-          sub="From delivered orders"
-        />
-        <StatCard
-          icon="⏳"
-          label="Pending Orders"
-          value={stats.pending_orders}
-          color="#ef4444"
-          sub={`${stats.delivered_orders} delivered`}
-        />
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Shop Operations Dashboard</h2>
+          <p className="page-sub">
+            {selectedShopCode
+              ? `Focused on ${selectedShopCode} workspace for product and stock operations.`
+              : 'Track platform health, stock, and live order intake across all shops.'}
+          </p>
+        </div>
+        <p className="live-indicator">Live sync: {lastSync ? lastSync.toLocaleTimeString('en-IN') : 'starting...'}</p>
       </div>
 
-      {/* Charts */}
-      <div className="charts-grid">
-        <div className="card">
-          <div className="card-title">Orders Overview</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={barData} barSize={44}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="name" tick={{ fill: 'var(--text2)', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: 'var(--text2)', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
-                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-              />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                {barData.map((_, i) => (
-                  <Cell key={i} fill={CHART_COLORS[i]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      {loading ? (
+        <div className="loading-grid">
+          {Array.from({ length: 6 }).map((_, idx) => <div className="skeleton-card" key={idx} />)}
         </div>
-
-        <div className="card">
-          <div className="card-title">Platform Distribution</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie
-                data={pieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={90}
-                paddingAngle={4}
-                dataKey="value"
-              >
-                {pieData.map((_, i) => (
-                  <Cell key={i} fill={CHART_COLORS[i]} />
-                ))}
-              </Pie>
-              <Legend
-                iconType="circle"
-                formatter={(value) => <span style={{ color: 'var(--text2)', fontSize: 12 }}>{value}</span>}
-              />
-              <Tooltip
-                contentStyle={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+      ) : (
+        <div className="stats-grid">
+          <StatCard title="Total Orders" value={stats?.total_orders?.toLocaleString('en-IN')} icon="🧾" color="#2563eb" />
+          <StatCard title="Pending Orders" value={stats?.pending_orders?.toLocaleString('en-IN')} icon="⏳" color="#ea580c" />
+          <StatCard title="Delivered Orders" value={stats?.delivered_orders?.toLocaleString('en-IN')} icon="✅" color="#16a34a" />
+          <StatCard title="Products in Scope" value={products.length.toLocaleString('en-IN')} icon="📦" color="#9333ea" />
+          <StatCard title="Stock Units" value={inventoryUnits.toLocaleString('en-IN')} icon="🏷️" color="#0891b2" />
+          <StatCard title="Low Stock Items" value={lowStockItems.toLocaleString('en-IN')} icon="⚠️" color="#dc2626" />
         </div>
+      )}
 
-        <div className="card" style={{ gridColumn: '1 / -1' }}>
-          <div className="card-title">Order Status Breakdown</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={orderStatusData} layout="vertical" barSize={28}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-              <XAxis type="number" tick={{ fill: 'var(--text2)', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text2)', fontSize: 12 }} axisLine={false} tickLine={false} width={70} />
-              <Tooltip
-                contentStyle={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
-                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-              />
-              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                {orderStatusData.map((item, i) => (
-                  <Cell key={i} fill={item.fill} />
+      <div className="dash-row single-row">
+        <div className="dash-orders-card">
+          <div className="card-title-row">
+            <h3 className="card-title">Recent Customer Orders (Realtime Feed)</h3>
+            <Link to="/orders" className="see-all">Open live board</Link>
+          </div>
+          <div className="order-list">
+            {recentOrders.length === 0 && !loading && <p className="empty-msg">No orders yet.</p>}
+            {recentOrders.map((o) => (
+              <div key={o.id} className="order-row">
+                <div>
+                  <p className="order-code">{o.order_code}</p>
+                  <p className="order-meta">
+                    {o.total_items} items · Rs {o.grand_total?.toFixed(2)}
+                  </p>
+                </div>
+                <span
+                  className="badge"
+                  style={{
+                    background: `${STATUS_COLORS[o.status] ?? '#6b7280'}1a`,
+                    color: STATUS_COLORS[o.status] ?? '#6b7280',
+                  }}
+                >
+                  {o.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="dash-row single-row">
+        <div className="dash-orders-card">
+          <div className="card-title-row">
+            <h3 className="card-title">Product Management</h3>
+            <div className="live-actions">
+              <Link to="/products?action=create" className="btn-primary">Add New Product</Link>
+              <Link to="/products" className="btn-outline">View All Products</Link>
+            </div>
+          </div>
+          <div className="table-card">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Shop</th>
+                  <th>Price</th>
+                  <th>Stock</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.length === 0 && (
+                  <tr><td colSpan={4} className="empty-msg">No products available.</td></tr>
+                )}
+                {products.slice(0, 8).map((p) => (
+                  <tr key={p.code}>
+                    <td>
+                      <div className="cell-name">{p.name}</div>
+                      <div className="cell-sub">{p.code}</div>
+                    </td>
+                    <td>{p.shop_name}</td>
+                    <td>Rs {p.price}</td>
+                    <td>
+                      <span className={`stock-badge ${p.stock < 6 ? 'low' : ''}`}>{p.stock}</span>
+                    </td>
+                  </tr>
                 ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

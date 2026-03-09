@@ -1,212 +1,255 @@
-import { useEffect, useState } from 'react'
-import Modal from '../components/Modal'
-import { getShops, createShop, updateShop, deleteShop } from '../api/client'
+import { useEffect, useState, useCallback } from 'react';
+import { getShops, createShop, updateShop, deleteShop } from '../api/admin';
+import { logAdminAction } from '../api/audit';
+import Modal from '../components/Modal';
 
 const EMPTY_FORM = {
-  code: '', name: '', shop_type: '', distance_km: 5, delivery_available: true,
-}
+  code: '', name: '', shop_type: '', distance_km: '', delivery_available: 'true',
+};
 
 export default function Shops() {
-  const [shops, setShops] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [shops, setShops] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const [showCreate, setShowCreate] = useState(false)
-  const [editItem, setEditItem] = useState(null)
-  const [deleteItem, setDeleteItem] = useState(null)
+  const loadShops = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await getShops();
+      setShops(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState(null)
+  useEffect(() => { loadShops(); }, [loadShops]);
 
-  const load = () => {
-    setLoading(true)
-    getShops()
-      .then(({ data }) => { setShops(data); setLoading(false) })
-      .catch(() => { setError('Failed to load shops'); setLoading(false) })
-  }
+  const openCreate = () => {
+    setForm(EMPTY_FORM);
+    setError('');
+    setModal('create');
+  };
 
-  useEffect(() => { load() }, [])
+  const openEdit = (s) => {
+    setSelected(s);
+    setForm({
+      name: s.name,
+      shop_type: s.shop_type,
+      distance_km: String(s.distance_km),
+      delivery_available: String(s.delivery_available),
+    });
+    setError('');
+    setModal('edit');
+  };
 
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }))
-
-  const openCreate = () => { setForm(EMPTY_FORM); setFormError(null); setShowCreate(true) }
-  const openEdit = (s) => { setForm({ ...s }); setFormError(null); setEditItem(s) }
+  const inp = (field) => ({
+    value: form[field],
+    onChange: (e) => setForm((f) => ({ ...f, [field]: e.target.value })),
+  });
 
   const handleCreate = async (e) => {
-    e.preventDefault(); setSaving(true); setFormError(null)
+    e.preventDefault();
+    setSaving(true);
+    setError('');
     try {
-      await createShop({ ...form, distance_km: parseInt(form.distance_km) })
-      setShowCreate(false); load()
+      const payload = {
+        code: form.code,
+        name: form.name,
+        shop_type: form.shop_type,
+        distance_km: form.distance_km ? parseInt(form.distance_km) : undefined,
+        delivery_available: form.delivery_available === 'true',
+      };
+      const { data } = await createShop(payload);
+      await logAdminAction({
+        action: 'shop_create',
+        entityType: 'shop',
+        entityId: data.code,
+        payload,
+      });
+      setModal(null);
+      loadShops();
     } catch (err) {
-      setFormError(err.response?.data?.detail || 'Failed to create shop')
-    } finally { setSaving(false) }
-  }
+      setError(err.response?.data?.detail ?? 'Failed to create shop');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleEdit = async (e) => {
-    e.preventDefault(); setSaving(true); setFormError(null)
+    e.preventDefault();
+    setSaving(true);
+    setError('');
     try {
-      await updateShop(editItem.code, {
-        name: form.name, shop_type: form.shop_type,
-        distance_km: parseInt(form.distance_km),
-        delivery_available: form.delivery_available,
-      })
-      setEditItem(null); load()
+      const payload = {
+        name: form.name,
+        shop_type: form.shop_type,
+        distance_km: form.distance_km ? parseInt(form.distance_km) : undefined,
+        delivery_available: form.delivery_available === 'true',
+      };
+      await updateShop(selected.code, payload);
+      await logAdminAction({
+        action: 'shop_update',
+        entityType: 'shop',
+        entityId: selected.code,
+        payload,
+      });
+      setModal(null);
+      loadShops();
     } catch (err) {
-      setFormError(err.response?.data?.detail || 'Failed to update shop')
-    } finally { setSaving(false) }
-  }
-
-  const handleDelete = async () => {
-    setSaving(true)
-    try {
-      await deleteShop(deleteItem.code)
-      setDeleteItem(null); load()
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to delete shop')
-      setSaving(false)
+      setError(err.response?.data?.detail ?? 'Failed to update shop');
+    } finally {
+      setSaving(false);
     }
-  }
+  };
+
+  const handleDelete = async (code) => {
+    if (!confirm(`Delete shop "${code}"? All its products must be removed first.`)) return;
+    try {
+      await deleteShop(code);
+      await logAdminAction({
+        action: 'shop_delete',
+        entityType: 'shop',
+        entityId: code,
+        payload: {},
+      });
+      loadShops();
+    } catch (err) {
+      alert(err.response?.data?.detail ?? 'Delete failed');
+    }
+  };
 
   return (
-    <div>
-      <div className="table-wrapper">
-        <div className="table-header">
-          <div className="table-title">Shops ({shops.length})</div>
-          <div className="table-actions">
-            <button className="btn btn-primary" onClick={openCreate}>+ Add Shop</button>
-          </div>
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Shops</h2>
+          <p className="page-sub">Manage all shops on the platform.</p>
         </div>
-
-        {loading ? (
-          <div className="page-loader"><div className="spinner" style={{ width: 32, height: 32, borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} /></div>
-        ) : error ? (
-          <div className="alert alert-danger" style={{ margin: 20 }}>{error}</div>
-        ) : shops.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">🏪</div><p>No shops found</p></div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Shop Name</th>
-                <th>Code</th>
-                <th>Type</th>
-                <th>Distance</th>
-                <th>Delivery</th>
-                <th>Products</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shops.map((s) => (
-                <tr key={s.id}>
-                  <td style={{ fontWeight: 600 }}>{s.name}</td>
-                  <td><span className="td-code">{s.code}</span></td>
-                  <td><span className="badge badge-info">{s.shop_type || '—'}</span></td>
-                  <td>{s.distance_km} km</td>
-                  <td>
-                    <span className={`badge ${s.delivery_available ? 'badge-success' : 'badge-danger'}`}>
-                      {s.delivery_available ? '✓ Available' : '✗ Unavailable'}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="badge badge-neutral">{s.product_count} items</span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(s)}>✏️ Edit</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => setDeleteItem(s)}>🗑️</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <button className="btn-primary" onClick={openCreate}>+ Add Shop</button>
       </div>
 
-      {/* CREATE */}
-      {showCreate && (
-        <Modal title="Add New Shop" onClose={() => setShowCreate(false)}>
-          <ShopForm
-            form={form} setF={setF} error={formError} saving={saving}
-            onSubmit={handleCreate} onCancel={() => setShowCreate(false)} showCode
-          />
+      {loading ? (
+        <div className="loading-grid">
+          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton-card" />)}
+        </div>
+      ) : (
+        <div className="shop-grid">
+          {shops.length === 0 && <p className="empty-msg">No shops found.</p>}
+          {shops.map((s) => (
+            <div key={s.code} className="shop-card">
+              <div className="shop-card-top">
+                <div className="shop-avatar">{s.name.charAt(0)}</div>
+                <div>
+                  <p className="shop-name">{s.name}</p>
+                  <p className="shop-code-text">{s.code}</p>
+                </div>
+              </div>
+              <div className="shop-meta">
+                <span className="shop-type-badge">{s.shop_type || 'General'}</span>
+                <span className={`delivery-badge ${s.delivery_available ? 'green' : 'red'}`}>
+                  {s.delivery_available ? '🚚 Delivery' : '❌ No Delivery'}
+                </span>
+              </div>
+              <div className="shop-stats-row">
+                <div className="shop-stat">
+                  <p className="shop-stat-val">{s.product_count}</p>
+                  <p className="shop-stat-label">Products</p>
+                </div>
+                <div className="shop-stat">
+                  <p className="shop-stat-val">{s.distance_km} km</p>
+                  <p className="shop-stat-label">Distance</p>
+                </div>
+              </div>
+              <div className="action-row">
+                <button className="btn-outline w-full" onClick={() => openEdit(s)}>Edit</button>
+                <button className="btn-action danger" onClick={() => handleDelete(s.code)}>Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create Modal */}
+      {modal === 'create' && (
+        <Modal title="Add New Shop" onClose={() => setModal(null)}>
+          {error && <div className="alert-error">{error}</div>}
+          <form onSubmit={handleCreate} className="modal-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Shop Code *</label>
+                <input type="text" placeholder="fresh_dairy" {...inp('code')} required minLength={2} />
+              </div>
+              <div className="form-group">
+                <label>Shop Name *</label>
+                <input type="text" placeholder="Fresh Dairy" {...inp('name')} required minLength={2} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Shop Type</label>
+                <input type="text" placeholder="Dairy Shop" {...inp('shop_type')} />
+              </div>
+              <div className="form-group">
+                <label>Distance (km)</label>
+                <input type="number" min="0" placeholder="3" {...inp('distance_km')} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Delivery Available</label>
+              <select {...inp('delivery_available')}>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-outline" onClick={() => setModal(null)}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Create Shop'}</button>
+            </div>
+          </form>
         </Modal>
       )}
 
-      {/* EDIT */}
-      {editItem && (
-        <Modal title={`Edit: ${editItem.name}`} onClose={() => setEditItem(null)}>
-          <ShopForm
-            form={form} setF={setF} error={formError} saving={saving}
-            onSubmit={handleEdit} onCancel={() => setEditItem(null)}
-          />
-        </Modal>
-      )}
-
-      {/* DELETE CONFIRM */}
-      {deleteItem && (
-        <Modal
-          title="Delete Shop"
-          onClose={() => setDeleteItem(null)}
-          footer={
-            <>
-              <button className="btn btn-ghost" onClick={() => setDeleteItem(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={handleDelete} disabled={saving}>
-                {saving ? <span className="spinner" /> : null} Delete
-              </button>
-            </>
-          }
-        >
-          <div className="confirm-icon">⚠️</div>
-          <p className="confirm-msg">Are you sure you want to delete</p>
-          <p className="confirm-code">{deleteItem.name}</p>
-          <p className="confirm-msg" style={{ marginTop: 8 }}>
-            Note: Shops with products cannot be deleted. Remove all products first.
-          </p>
+      {/* Edit Modal */}
+      {modal === 'edit' && selected && (
+        <Modal title={`Edit — ${selected.name}`} onClose={() => setModal(null)}>
+          {error && <div className="alert-error">{error}</div>}
+          <form onSubmit={handleEdit} className="modal-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Shop Name</label>
+                <input type="text" {...inp('name')} minLength={2} />
+              </div>
+              <div className="form-group">
+                <label>Shop Type</label>
+                <input type="text" {...inp('shop_type')} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Distance (km)</label>
+                <input type="number" min="0" {...inp('distance_km')} />
+              </div>
+              <div className="form-group">
+                <label>Delivery Available</label>
+                <select {...inp('delivery_available')}>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-outline" onClick={() => setModal(null)}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</button>
+            </div>
+          </form>
         </Modal>
       )}
     </div>
-  )
-}
-
-function ShopForm({ form, setF, error, saving, onSubmit, onCancel, showCode }) {
-  return (
-    <form onSubmit={onSubmit}>
-      {error && <div className="alert alert-danger">{error}</div>}
-      <div className="form-grid">
-        {showCode && (
-          <div className="form-group form-full">
-            <label className="form-label">Shop Code *</label>
-            <input className="form-input" placeholder="e.g. green_basket" value={form.code} onChange={(e) => setF('code', e.target.value)} required minLength={2} />
-          </div>
-        )}
-        <div className="form-group">
-          <label className="form-label">Shop Name *</label>
-          <input className="form-input" placeholder="Green Basket" value={form.name} onChange={(e) => setF('name', e.target.value)} required minLength={2} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Shop Type</label>
-          <input className="form-input" placeholder="Vegetable Shop" value={form.shop_type} onChange={(e) => setF('shop_type', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Distance (km)</label>
-          <input className="form-input" type="number" min="0" value={form.distance_km} onChange={(e) => setF('distance_km', e.target.value)} />
-        </div>
-        <div className="form-group" style={{ justifyContent: 'flex-end', paddingTop: 8 }}>
-          <label className="checkbox-label">
-            <input type="checkbox" checked={form.delivery_available} onChange={(e) => setF('delivery_available', e.target.checked)} />
-            Delivery Available
-          </label>
-        </div>
-      </div>
-      <div className="modal-footer" style={{ marginTop: 20 }}>
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>
-          {saving ? <span className="spinner" /> : null} Save
-        </button>
-      </div>
-    </form>
-  )
+  );
 }
