@@ -72,16 +72,3 @@ create table if not exists shop_order_items (
 
 create index if not exists idx_shop_order_items_shop_order_id on shop_order_items (shop_order_id);
 create index if not exists idx_shop_order_items_product_id on shop_order_items (product_id);
-
-create table if not exists admin_audit_logs (
-  id bigserial primary key,
-  admin_user_id bigint not null references users(id),
-  action varchar(80) not null,
-  entity_type varchar(50) not null,
-  entity_id varchar(100),
-  payload jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_admin_audit_admin on admin_audit_logs (admin_user_id);
-create index if not exists idx_admin_audit_created on admin_audit_logs (created_at desc);

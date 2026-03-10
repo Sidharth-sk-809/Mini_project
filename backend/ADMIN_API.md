@@ -384,7 +384,8 @@ List all customer orders. Optionally filter by status.
 | `placed` | Order just created |
 | `confirmed` | Shop confirmed |
 | `packed` | Order packed and ready |
-| `picked_up` | Delivery person picked up |
+| `ready_for_pickup` | Order ready for customer shop pickup |
+| `out_for_delivery` | Delivery person has picked up the order |
 | `delivered` | Order delivered to customer |
 | `cancelled` | Order cancelled |
 
