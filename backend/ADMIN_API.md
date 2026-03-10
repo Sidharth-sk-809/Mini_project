@@ -3,10 +3,9 @@
 ## Base URL
 
 ```
-https://mini-project-8sdo.onrender.com
-```
+https://neamet-backend-nfbh.onrender.com
 
-Interactive Swagger UI: https://mini-project-8sdo.onrender.com/docs
+Interactive Swagger UI: https://neamet-backend-nfbh.onrender.com/docs
 
 ---
 

@@ -1,7 +1,7 @@
 # Neamet - Flutter Mobile Application
 
 Flutter mobile app for the Neamet grocery delivery platform.  
-Connects to the live backend at **https://mini-project-8sdo.onrender.com**.
+Connects to the live backend at **https://neamet-backend-nfbh.onrender.com**.
 
 ## Prerequisites
 

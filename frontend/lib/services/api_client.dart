@@ -19,7 +19,7 @@ class ApiClient {
     }
 
     // Use production URL for all platforms
-    return 'https://mini-project-8sdo.onrender.com';
+    return 'https://neamet-backend-nfbh.onrender.com';
   }
 
   static Uri _uri(String path, [Map<String, dynamic>? query]) {

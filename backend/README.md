@@ -1,7 +1,7 @@
 # Neamet FastAPI Backend
 
-**Live URL:** https://mini-project-8sdo.onrender.com  
-**Swagger UI:** https://mini-project-8sdo.onrender.com/docs
+**Live URL:** https://neamet-backend-nfbh.onrender.com  
+**Swagger UI:** https://neamet-backend-nfbh.onrender.com/docs
 
 ---
 

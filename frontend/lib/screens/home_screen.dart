@@ -803,7 +803,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showSetLocationSheet() {
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) {
+      builder: (ctx) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -813,13 +813,42 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Text('Set Current Location', style: AppStyles.heading3),
                 const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.gps_fixed),
-                  title: const Text('Use GPS Location'),
-                  onTap: () {
-                    LocationService.setGpsLocation();
-                    Navigator.pop(context);
+                ValueListenableBuilder<bool>(
+                  valueListenable: LocationService.isLoading,
+                  builder: (context, loading, _) {
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: loading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.gps_fixed),
+                      title: const Text('Use Current GPS Location'),
+                      onTap: loading
+                          ? null
+                          : () async {
+                              // Capture before async gap to satisfy context-safety lint.
+                              final messenger = ScaffoldMessenger.of(context);
+                              Navigator.pop(ctx);
+                              final address =
+                                  await LocationService.fetchGpsLocation();
+                              if (!mounted) return;
+                              if (address == null) {
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Could not get GPS location. Check permissions or use manual entry.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+                              // Persist to backend + session.
+                              await AuthService.updateLocation(address);
+                            },
+                    );
                   },
                 ),
                 ListTile(
@@ -827,7 +856,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   leading: const Icon(Icons.edit_location_alt),
                   title: const Text('Enter Location Manually'),
                   onTap: () {
-                    Navigator.pop(context);
+                    Navigator.pop(ctx);
                     _showManualLocationDialog();
                   },
                 ),
@@ -857,8 +886,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                LocationService.setLocation(controller.text);
+                final loc = controller.text.trim();
+                LocationService.setLocation(loc);
                 Navigator.pop(context);
+                // Fire-and-forget: persist to backend without blocking UI.
+                AuthService.updateLocation(loc);
               },
               child: const Text('Save'),
             ),

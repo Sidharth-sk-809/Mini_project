@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = 'https://mini-project-1-ee3j.onrender.com';
+const BASE_URL = 'https://neamet-backend-nfbh.onrender.com';
 
 const client = axios.create({
   baseURL: BASE_URL,
