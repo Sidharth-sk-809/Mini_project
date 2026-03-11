@@ -16,6 +16,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(40), default="customer")
     location: Mapped[str] = mapped_column(String(255), default="Edappally, Kochi")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # For shop_admin role: links this user to the shop they manage
+    managed_shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
 
 
 class Shop(Base):

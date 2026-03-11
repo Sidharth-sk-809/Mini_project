@@ -76,3 +76,12 @@ def require_admin_user(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin role required")
     return current_user
+
+
+def require_shop_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Allows shop_admin or platform admin. shop_admin must have managed_shop_id set."""
+    if current_user.role not in ("shop_admin", "admin"):
+        raise HTTPException(status_code=403, detail="Shop admin role required")
+    if current_user.role == "shop_admin" and current_user.managed_shop_id is None:
+        raise HTTPException(status_code=403, detail="Shop admin is not assigned to any shop")
+    return current_user

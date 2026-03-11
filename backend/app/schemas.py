@@ -225,3 +225,55 @@ class AdminStatsResponse(BaseModel):
     total_revenue: float
     pending_orders: int
     delivered_orders: int
+
+
+# ── Shop Admin Schemas ───────────────────────────────────────────
+
+class ShopAdminCreateRequest(BaseModel):
+    """Platform admin creates a shop_admin account and links it to a shop."""
+    name: str = Field(min_length=2)
+    email: EmailStr
+    password: str = Field(min_length=6)
+    shop_code: str = Field(min_length=2)
+
+
+class ShopAdminOrderStatusUpdate(BaseModel):
+    """Shop admin can move an order through: confirmed → packed → ready_for_pickup, or cancel."""
+    status: str = Field(pattern="^(confirmed|packed|ready_for_pickup|cancelled)$")
+
+
+class ShopAdminStatsResponse(BaseModel):
+    shop_id: int
+    shop_code: str
+    shop_name: str
+    total_products: int
+    out_of_stock_products: int
+    total_orders: int
+    pending_orders: int
+    ready_orders: int
+    delivered_orders: int
+    total_revenue: float
+
+
+class ShopAdminOrderItemResponse(BaseModel):
+    product_id: str
+    product_name: str
+    quantity: int
+    price: float
+
+
+class ShopAdminOrderResponse(BaseModel):
+    id: int
+    shop_order_code: str
+    customer_order_id: int
+    customer_name: str
+    delivery_address: str
+    status: str
+    delivery_job_status: str
+    selected_delivery_type: str
+    delivery_fee: float
+    eta_minutes: int
+    created_at: datetime
+    items: list[ShopAdminOrderItemResponse]
+    items_total: float
+    assigned_delivery_name: str | None = None

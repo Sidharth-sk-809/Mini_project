@@ -10,6 +10,7 @@ from .auth import (
     hash_password,
     require_admin_user,
     require_delivery_user,
+    require_shop_admin,
     verify_password,
 )
 from .database import Base, SessionLocal, engine, get_db
@@ -36,6 +37,11 @@ from .schemas import (
     OrderDTO,
     ProductDTO,
     SearchResponse,
+    ShopAdminCreateRequest,
+    ShopAdminOrderResponse,
+    ShopAdminOrderItemResponse,
+    ShopAdminOrderStatusUpdate,
+    ShopAdminStatsResponse,
     ShopDTO,
     ShopOrderDTO,
     ShopOrderItemDTO,
@@ -846,4 +852,324 @@ def admin_list_orders(
                 grand_total=round(grand_total, 2),
             )
         )
+    return result
+
+
+# ── Platform admin: create a shop admin account ────────────────
+
+@app.post("/api/admin/shop-admins", response_model=AdminUserResponse, status_code=201)
+def admin_create_shop_admin(
+    payload: ShopAdminCreateRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_user),
+):
+    """Platform admin creates a shop_admin user linked to a specific shop."""
+    shop = db.query(Shop).filter(Shop.code == payload.shop_code).first()
+    if not shop:
+        raise HTTPException(status_code=404, detail="Shop not found")
+
+    existing = db.query(User).filter(User.email == payload.email).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already exists")
+
+    user = User(
+        name=payload.name,
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        role="shop_admin",
+        location="",
+        managed_shop_id=shop.id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return AdminUserResponse(
+        id=user.id,
+        name=user.name,
+        email=user.email,
+        role=user.role,
+        location=user.location,
+        created_at=user.created_at,
+    )
+
+
+# ════════════════════════════════════════════════════════════════
+#  SHOP ADMIN ENDPOINTS  (/api/shop/*)
+#  Accessible by: shop_admin (own shop only) or platform admin
+# ════════════════════════════════════════════════════════════════
+
+def _get_shop_for_user(current_user: User, db: Session, shop_code: str | None = None) -> Shop:
+    """Return the shop a shop_admin manages, or look up by code if platform admin."""
+    if current_user.role == "admin":
+        if shop_code is None:
+            raise HTTPException(status_code=400, detail="Platform admins must supply ?shop_code=")
+        shop = db.query(Shop).filter(Shop.code == shop_code).first()
+        if not shop:
+            raise HTTPException(status_code=404, detail="Shop not found")
+        return shop
+    # shop_admin
+    shop = db.query(Shop).filter(Shop.id == current_user.managed_shop_id).first()
+    if not shop:
+        raise HTTPException(status_code=404, detail="Managed shop not found")
+    return shop
+
+
+# ── Shop info & stats ─────────────────────────────────────────
+
+@app.get("/api/shop/me", response_model=AdminShopResponse)
+def shop_admin_get_shop(
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    """Return the shop details managed by the current shop admin."""
+    shop = _get_shop_for_user(current_user, db, shop_code)
+    return _shop_to_admin_dto(shop, db)
+
+
+@app.get("/api/shop/stats", response_model=ShopAdminStatsResponse)
+def shop_admin_stats(
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    shop = _get_shop_for_user(current_user, db, shop_code)
+
+    total_products = db.query(Product).filter(Product.shop_id == shop.id).count()
+    out_of_stock = db.query(Product).filter(Product.shop_id == shop.id, Product.stock == 0).count()
+
+    shop_orders = db.query(ShopOrder).filter(ShopOrder.shop_id == shop.id).all()
+    total_orders = len(shop_orders)
+    pending_orders = sum(1 for so in shop_orders if so.status in ("placed", "confirmed", "packed"))
+    ready_orders = sum(1 for so in shop_orders if so.status == "ready_for_pickup")
+    delivered_orders = sum(1 for so in shop_orders if so.status == "delivered")
+
+    total_revenue = 0.0
+    for so in shop_orders:
+        if so.status == "delivered":
+            for item in so.items:
+                total_revenue += item.price * item.quantity
+
+    return ShopAdminStatsResponse(
+        shop_id=shop.id,
+        shop_code=shop.code,
+        shop_name=shop.name,
+        total_products=total_products,
+        out_of_stock_products=out_of_stock,
+        total_orders=total_orders,
+        pending_orders=pending_orders,
+        ready_orders=ready_orders,
+        delivered_orders=delivered_orders,
+        total_revenue=round(total_revenue, 2),
+    )
+
+
+# ── Products ──────────────────────────────────────────────────
+
+@app.get("/api/shop/products", response_model=list[AdminProductResponse])
+def shop_admin_list_products(
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    shop = _get_shop_for_user(current_user, db, shop_code)
+    products = db.query(Product).filter(Product.shop_id == shop.id).order_by(Product.name).all()
+    return [_product_to_admin_dto(p, db) for p in products]
+
+
+@app.post("/api/shop/products", response_model=AdminProductResponse, status_code=201)
+def shop_admin_create_product(
+    payload: AdminProductCreate,
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    shop = _get_shop_for_user(current_user, db, shop_code)
+
+    existing = db.query(Product).filter(Product.code == payload.code).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Product code already exists")
+
+    product = Product(
+        code=payload.code,
+        name=payload.name,
+        subtitle=payload.subtitle,
+        image=payload.image,
+        price=payload.price,
+        rating=payload.rating,
+        review_count=payload.review_count,
+        description=payload.description,
+        stock=payload.stock,
+        shop_id=shop.id,
+    )
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return _product_to_admin_dto(product, db)
+
+
+@app.put("/api/shop/products/{product_code}", response_model=AdminProductResponse)
+def shop_admin_update_product(
+    product_code: str,
+    payload: AdminProductUpdate,
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    shop = _get_shop_for_user(current_user, db, shop_code)
+    product = db.query(Product).filter(Product.code == product_code, Product.shop_id == shop.id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found in your shop")
+
+    if payload.name is not None:
+        product.name = payload.name
+    if payload.subtitle is not None:
+        product.subtitle = payload.subtitle
+    if payload.image is not None:
+        product.image = payload.image
+    if payload.price is not None:
+        product.price = payload.price
+    if payload.rating is not None:
+        product.rating = payload.rating
+    if payload.review_count is not None:
+        product.review_count = payload.review_count
+    if payload.description is not None:
+        product.description = payload.description
+    if payload.stock is not None:
+        product.stock = payload.stock
+
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return _product_to_admin_dto(product, db)
+
+
+@app.patch("/api/shop/products/{product_code}/stock", response_model=AdminProductResponse)
+def shop_admin_update_stock(
+    product_code: str,
+    payload: AdminStockUpdate,
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    shop = _get_shop_for_user(current_user, db, shop_code)
+    product = db.query(Product).filter(Product.code == product_code, Product.shop_id == shop.id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found in your shop")
+
+    product.stock = payload.stock
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return _product_to_admin_dto(product, db)
+
+
+@app.delete("/api/shop/products/{product_code}", status_code=204)
+def shop_admin_delete_product(
+    product_code: str,
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    shop = _get_shop_for_user(current_user, db, shop_code)
+    product = db.query(Product).filter(Product.code == product_code, Product.shop_id == shop.id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found in your shop")
+    db.delete(product)
+    db.commit()
+
+
+# ── Orders / Delivery monitoring ─────────────────────────────
+
+def _build_shop_order_response(db: Session, so: ShopOrder) -> ShopAdminOrderResponse:
+    customer_order = db.query(CustomerOrder).filter(CustomerOrder.id == so.customer_order_id).first()
+    customer = db.query(User).filter(User.id == customer_order.customer_user_id).first() if customer_order else None
+
+    items: list[ShopAdminOrderItemResponse] = []
+    items_total = 0.0
+    for item in so.items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        items.append(ShopAdminOrderItemResponse(
+            product_id=product.code if product else str(item.product_id),
+            product_name=product.name if product else "Unknown",
+            quantity=item.quantity,
+            price=item.price,
+        ))
+        items_total += item.price * item.quantity
+
+    return ShopAdminOrderResponse(
+        id=so.id,
+        shop_order_code=so.shop_order_code,
+        customer_order_id=so.customer_order_id,
+        customer_name=customer.name if customer else "Unknown",
+        delivery_address=customer_order.delivery_address if customer_order else "",
+        status=so.status,
+        delivery_job_status=so.delivery_job_status,
+        selected_delivery_type=so.selected_delivery_type,
+        delivery_fee=so.delivery_fee,
+        eta_minutes=so.eta_minutes,
+        created_at=customer_order.created_at if customer_order else datetime.utcnow(),
+        items=items,
+        items_total=round(items_total, 2),
+        assigned_delivery_name=so.assigned_delivery_name,
+    )
+
+
+@app.get("/api/shop/orders", response_model=list[ShopAdminOrderResponse])
+def shop_admin_list_orders(
+    status: str | None = None,
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    """List all orders for the shop. Optionally filter by status."""
+    shop = _get_shop_for_user(current_user, db, shop_code)
+    query = db.query(ShopOrder).filter(ShopOrder.shop_id == shop.id)
+    if status:
+        query = query.filter(ShopOrder.status == status)
+    orders = query.order_by(ShopOrder.id.desc()).all()
+    return [_build_shop_order_response(db, so) for so in orders]
+
+
+@app.post("/api/shop/orders/{shop_order_code}/status", response_model=ShopAdminOrderResponse)
+def shop_admin_update_order_status(
+    shop_order_code: str,
+    payload: ShopAdminOrderStatusUpdate,
+    shop_code: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_shop_admin),
+):
+    """
+    Shop admin can transition orders:
+      confirmed → packed → ready_for_pickup  (for home_delivery: confirmed → packed → available for delivery)
+      Or cancel (if not yet out_for_delivery/delivered).
+    """
+    shop = _get_shop_for_user(current_user, db, shop_code)
+    so = db.query(ShopOrder).filter(
+        ShopOrder.shop_order_code == shop_order_code,
+        ShopOrder.shop_id == shop.id,
+    ).first()
+    if not so:
+        raise HTTPException(status_code=404, detail="Order not found in your shop")
+
+    if so.status in ("out_for_delivery", "delivered", "cancelled"):
+        raise HTTPException(status_code=409, detail=f"Cannot update order in '{so.status}' status")
+
+    new_status = payload.status
+
+    # If cancelling, also propagate delivery job cancellation
+    if new_status == "cancelled":
+        so.status = "cancelled"
+        so.delivery_job_status = "cancelled"
+    elif new_status == "ready_for_pickup":
+        # Shop is ready; mark delivery job as available so delivery person can pick it up
+        so.status = "packed"
+        so.delivery_job_status = "available"
+    else:
+        so.status = new_status
+
+    db.add(so)
+    db.commit()
+    db.refresh(so)
+    return _build_shop_order_response(db, so)
     return result

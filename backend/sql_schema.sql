@@ -1,15 +1,6 @@
 -- Neamet schema for Supabase Postgres
 
-create table if not exists users (
-  id bigserial primary key,
-  name varchar(120) not null,
-  email varchar(255) not null unique,
-  password_hash varchar(255) not null,
-  role varchar(40) not null default 'customer' check (role in ('customer','delivery_person','admin')),
-  location varchar(255) not null default 'Edappally, Kochi',
-  created_at timestamptz not null default now()
-);
-
+-- shops must come before users because users.managed_shop_id references shops
 create table if not exists shops (
   id bigserial primary key,
   code varchar(64) not null unique,
@@ -17,6 +8,18 @@ create table if not exists shops (
   shop_type varchar(80) not null,
   distance_km integer not null check (distance_km in (2,5,10)),
   delivery_available boolean not null default true
+);
+
+create table if not exists users (
+  id bigserial primary key,
+  name varchar(120) not null,
+  email varchar(255) not null unique,
+  password_hash varchar(255) not null,
+  role varchar(40) not null default 'customer' check (role in ('customer','delivery_person','admin','shop_admin')),
+  location varchar(255) not null default 'Edappally, Kochi',
+  created_at timestamptz not null default now(),
+  -- FK only populated for shop_admin role; links the user to the shop they manage
+  managed_shop_id bigint null references shops(id) on delete set null
 );
 
 create table if not exists products (
@@ -72,3 +75,14 @@ create table if not exists shop_order_items (
 
 create index if not exists idx_shop_order_items_shop_order_id on shop_order_items (shop_order_id);
 create index if not exists idx_shop_order_items_product_id on shop_order_items (product_id);
+
+-- ── Migration: run these on an EXISTING Supabase database ───────
+-- (safe to skip if applying sql_schema.sql fresh)
+--
+-- alter table users
+--   add column if not exists managed_shop_id bigint null references shops(id) on delete set null;
+--
+-- alter table users
+--   drop constraint if exists users_role_check;
+-- alter table users
+--   add constraint users_role_check check (role in ('customer','delivery_person','admin','shop_admin'));
