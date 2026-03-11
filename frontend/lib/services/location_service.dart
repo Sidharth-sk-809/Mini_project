@@ -36,35 +36,62 @@ class LocationService {
       }
 
       // 2. Make sure location services are enabled on the device.
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        return null;
+      //    isLocationServiceEnabled() is unreliable on Flutter Web – skip it.
+      if (!kIsWeb) {
+        final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) return null;
       }
 
-      // 3. Get position.
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      ).timeout(const Duration(seconds: 10));
+      // 3. Get position — try a precise fix first, fall back to last-known.
+      Position? position;
+
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium, // medium works even without GPS satellite fix
+          ),
+        ).timeout(const Duration(seconds: 20));
+      } catch (_) {
+        // getCurrentPosition failed (timeout / unavailable). Try cached position.
+        position = await Geolocator.getLastKnownPosition();
+      }
+
+      if (position == null) return null;
 
       // 4. Reverse-geocode to a readable address.
-      final placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+      //    The geocoding package does not support Flutter Web; fall back to
+      //    a coordinate string on web.
+      String address;
+      if (kIsWeb) {
+        address =
+            '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+      } else {
+        try {
+          final placemarks = await placemarkFromCoordinates(
+            position.latitude,
+            position.longitude,
+          );
 
-      if (placemarks.isEmpty) return null;
-
-      final p = placemarks.first;
-      // Build a short, friendly label: "Suburb, City" or fallback combos.
-      final parts = [
-        if ((p.subLocality ?? '').isNotEmpty) p.subLocality,
-        if ((p.locality ?? '').isNotEmpty) p.locality,
-      ];
-      final address = parts.isNotEmpty
-          ? parts.join(', ')
-          : (p.administrativeArea ?? 'Unknown location');
+          if (placemarks.isEmpty) {
+            address =
+                '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+          } else {
+            final p = placemarks.first;
+            // Build a short, friendly label: "Suburb, City" or fallback combos.
+            final parts = [
+              if ((p.subLocality ?? '').isNotEmpty) p.subLocality,
+              if ((p.locality ?? '').isNotEmpty) p.locality,
+            ];
+            address = parts.isNotEmpty
+                ? parts.join(', ')
+                : (p.administrativeArea ?? 'Unknown location');
+          }
+        } catch (_) {
+          // Reverse-geocode failed — fall back to raw coordinates.
+          address =
+              '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+        }
+      }
 
       currentLocation.value = address;
       return address;

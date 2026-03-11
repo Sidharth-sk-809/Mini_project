@@ -356,7 +356,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         ),
         const SizedBox(height: 16),
         SizedBox(
-          height: 240,
+          height: 265,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -387,36 +387,69 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: DecoratedBox(
-            decoration: AppStyles.accentCardDecoration,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  CartService.addProduct(widget.product);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${widget.product.name} added to cart'),
-                      duration: const Duration(milliseconds: 900),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Row(
+          children: [
+            // Buy Now button
+            Expanded(
+              child: SizedBox(
+                height: 56,
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: AppColors.accentGreen, width: 2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                  );
-                },
-                child: Center(
+                  ),
+                  onPressed: () {
+                    CartService.addProduct(widget.product);
+                    Navigator.pushNamed(context, '/cart');
+                  },
                   child: Text(
-                    'Add To Cart',
+                    'Buy Now',
                     style: AppStyles.heading3.copyWith(
-                      color: Colors.white,
+                      color: AppColors.accentGreen,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
               ),
             ),
-          ),
+            const SizedBox(width: 12),
+            // Add To Cart button
+            Expanded(
+              child: SizedBox(
+                height: 56,
+                child: DecoratedBox(
+                  decoration: AppStyles.accentCardDecoration,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () {
+                        CartService.addProduct(widget.product);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${widget.product.name} added to cart'),
+                            duration: const Duration(milliseconds: 900),
+                          ),
+                        );
+                      },
+                      child: Center(
+                        child: Text(
+                          'Add To Cart',
+                          style: AppStyles.heading3.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
